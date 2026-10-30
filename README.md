@@ -22,6 +22,10 @@
 
 ---
 
+**Liens utiles :** [Site public Kortiz](https://kortiz-de19f.web.app/) · [Code et tests automatisés](https://github.com/carlxwj/kortiz/actions/workflows/checks.yml)
+
+> Le site public peut correspondre à une version différente du code de ce dépôt. Les parcours qui nécessitent Firebase doivent être validés dans l'environnement concerné.
+
 ## Présentation
 
 **Kortiz** est un projet personnel d'application web conçu pour simplifier l'organisation financière du quotidien : colocation, voyage, couple, sortie entre amis ou dépenses partagées dans un groupe.
