@@ -14,5 +14,9 @@ jobs:
           node-version: '22'
       - name: Unit and static tests
         run: node --test tests/*.test.js
+      - name: Validate Cloud Functions dependency lockfile
+        run: npm ci --prefix functions
+      - name: Check Cloud Functions JavaScript syntax
+        run: node --check functions/index.js
       - name: Check for obvious secrets
         run: python3 scripts/scan-secrets.py
