@@ -13,7 +13,7 @@
 ![JavaScript](https://img.shields.io/badge/JavaScript-ES_Modules-F7DF1E?style=flat-square&logo=javascript&logoColor=111111)
 ![Firebase](https://img.shields.io/badge/Firebase-Auth_%7C_Firestore_%7C_Functions-FFCA28?style=flat-square&logo=firebase&logoColor=111111)
 ![Languages](https://img.shields.io/badge/Languages-FR_%7C_EN_%7C_PT_%7C_ES-4B65A7?style=flat-square)
-![Tests](https://img.shields.io/badge/Tests-257%20passed-238636?style=flat-square)
+[![Source checks](https://github.com/carlxwj/kortiz/actions/workflows/checks.yml/badge.svg)](https://github.com/carlxwj/kortiz/actions/workflows/checks.yml)
 ![Project](https://img.shields.io/badge/Status-Development-64748B?style=flat-square)
 
 **Application web collaborative · Responsive · Progressive Web App (manifest)**
