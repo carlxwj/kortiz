@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<script src="/boot-failsafe.js"></script>
+<meta name="google-adsense-account" content="ca-pub-4201455737479851">
+<link rel="stylesheet" href="/consent-v28.css">
+<script defer src="/consent-v28.js"></script>
+<meta charset="utf-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="description" content="Kortiz — partage de dépenses pour kots, colocs, voyages et sorties.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kortiz">
+<link rel="alternate" title="Présentation publique de Kortiz" href="/decouvrir.html">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" type="image/png" sizes="64x64" href="/favicon-64.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<title>Kortiz — partage de dépenses</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="stylesheet" href="/landing-v23.css">
+<link rel="stylesheet" href="/design-v23.css">
+<script defer src="/i18n.js"></script>
+<script defer src="/planning-logic.js"></script>
+<script defer src="/notification-logic.js"></script>
+<script defer src="/currency-logic.js"></script>
+<script defer src="/landing-v23.js"></script>
+</head>
+<body>
+<noscript><div style="padding:22px;color:#fff;background:#071810"><p>Découvrez Kortiz, le service de dépenses partagées, budgets et remboursements.</p><a style="color:#bdfae3" href="/decouvrir.html">Présentation publique de Kortiz</a></div></noscript>
+<div id="boot"><div class="logo"><img src="/logo.svg" alt="Kortiz"></div></div>
+<div id="shell">
+<div id="hero" aria-hidden="true">
+  <div class="fx"></div>
+
+</div>
+<nav id="sidebar" aria-label="Navigation principale"></nav>
+<div id="app" hidden>
+  <header id="topbar"></header>
+  <main id="view"></main>
+  <nav id="bottomnav"></nav>
+  <button id="fab" class="out" data-act="fab"></button>
+</div>
+</div>
+<div id="offline" role="status" hidden>Hors ligne : consultation limitée aux données déjà chargées. Pour enregistrer des dépenses, remboursements et messages, reconnecte-toi.</div>
+<div id="sheet-root"></div>
+<div id="toast-root" aria-live="polite"></div>
+<div id="print-root"></div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://kortiz-de19f.web.app/sitemap.xml

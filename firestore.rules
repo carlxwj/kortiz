@@ -1,0 +1,478 @@
+rules_version = '2';
+
+// ============================================================================
+// Kortiz — règles de sécurité Cloud Firestore
+// Principe : on ne lit / n'écrit un groupe (et ses sous-collections) que si
+// l'on figure dans groups/{gid}.memberIds. Les adhésions passent par la
+// Cloud Function « joinGroup » (code d'invitation), jamais directement.
+// ============================================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Fonctions utilitaires ----------
+    function signedIn() { return request.auth != null; }
+    function groupPath(gid) { return /databases/$(database)/documents/groups/$(gid); }
+    // Membre AVANT l'écriture (lectures, modifications, suppressions)
+    function isMember(gid) { return signedIn() && exists(groupPath(gid)) && request.auth.uid in get(groupPath(gid)).data.memberIds; }
+    // Membre APRÈS l'écriture : nécessaire quand le groupe est créé dans le même batch que ses sous-documents
+    function isMemberAfter(gid) { return signedIn() && request.auth.uid in getAfter(groupPath(gid)).data.memberIds; }
+    // Règle d'or : un utilisateur n'accède à un groupe et à TOUTES ses sous-collections que s'il figure dans memberIds.
+    // Un client ne peut jamais s'ajouter lui-même : l'adhésion passe par la Cloud Function « joinGroup » (code vérifié côté serveur).
+    // okStr / okCents : validation de type et de longueur (titre non vide et borné, montant entier strictement positif).
+    function okStr(v, max) { return v is string && v.size() > 0 && v.size() <= max; }
+    function okCents(v) { return v is int && v > 0 && v <= 100000000; }   // 1 000 000,00 € maximum
+
+    // Suivi hors groupe : miroir en lecture seule, propre à chaque utilisateur.
+    // Les écritures sont strictement réservées au backend Firebase Admin.
+    match /users/{uid}/exitDebts/{debtId} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    // Signalements : compte authentifié uniquement, pas de lecture publique.
+    match /users/{uid}/bugReports/{reportId} {
+      allow read, update, delete: if false;
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['uid','kind','description','page','screenshotPath','status','createdAt'])
+        && request.resource.data.uid == uid
+        && request.resource.data.kind in ['visual','functional','idea']
+        && okStr(request.resource.data.description,3000)
+        && request.resource.data.description.size() >= 30
+        && request.resource.data.page is string && request.resource.data.page.size() <= 120
+        && request.resource.data.screenshotPath is string
+        && (request.resource.data.screenshotPath == '' || request.resource.data.screenshotPath == 'supportReports/'+uid+'/'+reportId+'.jpg')
+        && request.resource.data.status == 'new'
+        && request.resource.data.createdAt == request.time;
+    }
+
+    match /users/{uid}/formerGroups/{gid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    // Invitations directes : seules la personne invitée peut lire sa boîte.
+    // Aucun client ne peut s'envoyer une invitation ou en accepter une par
+    // écriture directe : l'ensemble passe par joinGroup côté serveur.
+    match /users/{uid}/groupInvites/{gid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update, delete: if false;
+    }
+
+    // ---------- Profils : strictement privés ----------
+    match /users/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid && validUser(request.resource.data);
+      // Shared payment details are updated only through a server transaction;
+      // otherwise a direct profile edit could leave stale group copies visible.
+      allow update: if signedIn() && request.auth.uid == uid && validUser(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['iban','shareIban','weroContact','shareWero']);
+      allow delete: if false;                       // suppression via la Cloud Function « deleteAccount »
+    }
+    function validUser(d) {
+      return d.keys().hasOnly(['displayName', 'givenName', 'familyName', 'onboardingDone', 'avatarColor', 'iban', 'shareIban', 'weroContact', 'shareWero', 'paymentGuideSeen', 'paymentGuideMode', 'notificationReads', 'notificationPrefs', 'mutedGroupIds', 'displayCurrency', 'theme', 'language', 'fcmTokens', 'demoSeeded', 'createdAt', 'updatedAt'])
+        && d.get('displayName', '') is string && d.get('displayName', '').size() <= 60
+        && d.get('givenName', '') is string && d.get('givenName', '').size() <= 40
+        && d.get('familyName', '') is string && d.get('familyName', '').size() <= 40
+        && d.get('onboardingDone', false) is bool
+        && d.get('avatarColor', '#000000') is string && d.get('avatarColor', '#000000').size() <= 9
+        && d.get('iban', '') is string && d.get('iban', '').size() <= 40
+        && d.get('shareIban', true) is bool
+        && d.get('weroContact', '') is string && d.get('weroContact', '').size() <= 254
+        && (d.get('weroContact','') == '' || d.get('weroContact','').matches('([+][0-9]{7,15}|[0-9]{7,15}|[^ @]+@[^ @]+[.][^ @]+)'))
+        && d.get('shareWero', false) is bool
+        && d.get('paymentGuideSeen',false) is bool
+        && d.get('paymentGuideMode','once') in ['once','always']
+        && d.get('notificationReads',{}) is map
+        && d.get('notificationReads',{}).size() <= 250
+        && d.get('notificationPrefs',{}) is map
+        && d.get('notificationPrefs',{}).keys().hasOnly(['groupInvites','directMessages','groupMessages','expenses','moneyRequests','paymentConfirmations'])
+        && d.get('notificationPrefs',{}).values().toSet().hasOnly([true,false])
+        && d.get('mutedGroupIds',[]) is list
+        && d.get('mutedGroupIds',[]).size() <= 50
+        && d.get('displayCurrency','EUR') in ['EUR','USD','GBP','CHF','CAD','AUD','BRL','MXN','TRY','PLN','CZK','SEK','NOK','DKK','ARS','CLP','COP','PEN','UYU','PYG','BOB','MAD','TND']
+        && (d.get('shareWero', false) == false || d.get('weroContact', '') != '')
+        && d.get('demoSeeded', false) is bool
+        && d.get('theme', 'auto') in ['auto', 'light', 'dark'] // legacy : ancien champ, ignoré par le client
+        && d.get('language', 'fr') in ['fr', 'en', 'pt', 'es']
+        && d.get('fcmTokens', []) is list && d.get('fcmTokens', []).size() <= 10;
+    }
+
+    function groupAdmin(gid) {
+      return isMember(gid) && (get(groupPath(gid)).data.createdBy == request.auth.uid
+        || request.auth.uid in get(groupPath(gid)).data.get('adminIds',[]));
+    }
+
+    // ---------- Groupes ----------
+    match /groups/{gid} {
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+      allow create: if signedIn() && validGroup(request.resource.data)
+                    && request.resource.data.createdBy == request.auth.uid
+                    && request.resource.data.memberIds == [request.auth.uid];
+      // Les départs et les adhésions passent exclusivement par joinGroup :
+      // un départ doit enregistrer atomiquement les dettes hors groupe.
+      allow update: if signedIn() && request.auth.uid in resource.data.memberIds
+                    && validGroup(request.resource.data)
+                    && request.resource.data.createdBy == resource.data.createdBy
+                    && request.resource.data.inviteCode == resource.data.inviteCode
+                    // Les montants passés ne peuvent pas être réinterprétés dans une autre devise.
+                    && request.resource.data.currency == resource.data.currency
+                    // Le plafond facultatif appartient au créateur du groupe uniquement.
+                    && (request.resource.data.get('budgetCents',null) == resource.data.get('budgetCents',null)
+                        || request.auth.uid == resource.data.createdBy)
+                    && request.resource.data.get('adminIds', []) == resource.data.get('adminIds', [])
+                    && request.resource.data.memberIds == resource.data.memberIds
+                    && (groupAdmin(gid) ||
+                       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds','updatedAt'])
+                        && request.resource.data.memberIds != resource.data.memberIds))
+                    && !(resource.data.createdBy == request.auth.uid && !(request.auth.uid in request.resource.data.memberIds));
+      allow delete: if false;                       // suppression via la Cloud Function « deleteGroup »
+    }
+    function validGroup(d) {
+      return d.keys().hasOnly(['name', 'emoji', 'currency', 'type', 'budgetCents', 'createdBy', 'memberIds', 'inviteCode', 'archived', 'demo', 'adminIds', 'createdAt', 'updatedAt'])
+        && okStr(d.name, 60)
+        && d.emoji is string && d.emoji.size() <= 12
+        && d.currency is string && d.currency.matches('[A-Z]{3}')
+        && (d.get('budgetCents', null) == null || (d.get('budgetCents', null) is int && d.get('budgetCents', null) > 0 && d.get('budgetCents', null) <= 1000000000))
+        && d.type in ['kot', 'voyage', 'sortie', 'autre']
+        && d.archived is bool
+        && d.get('demo', false) is bool
+        && d.get('adminIds', []) is list && d.get('adminIds', []).size() <= 20
+        && d.inviteCode is string && d.inviteCode.size() == 8
+        && d.memberIds is list && d.memberIds.size() >= 1 && d.memberIds.size() <= 50
+        && d.createdBy is string && d.createdBy.size() <= 128;
+    }
+
+    // ---------- Participants (comptes connectés ou « fantômes » sans compte) ----------
+    match /groups/{gid}/members/{mid} {
+      allow read: if isMember(gid);
+      // Un participant fantôme peut être créé par un membre. La liaison d'un
+      // participant existant à un compte est réservée à la Cloud Function joinGroup.
+      // Exception : le créateur lie son propre profil lors du batch initial.
+      allow create: if isMemberAfter(gid) && validMember(request.resource.data)
+                    && (request.resource.data.uid == request.auth.uid
+                          && !exists(groupPath(gid))
+                          && getAfter(groupPath(gid)).data.createdBy == request.auth.uid
+                        || (request.resource.data.uid == null
+                            && !exists(groupPath(gid))
+                            && getAfter(groupPath(gid)).data.get('demo', false) == true
+                            && getAfter(groupPath(gid)).data.createdBy == request.auth.uid));
+      // Un membre ne peut ni usurper le compte d'un autre, ni changer la liaison uid.
+      // Un utilisateur qui quitte peut détacher sa propre fiche dans le même batch.
+      allow update: if isMember(gid) && validMember(request.resource.data)
+                    && (resource.data.uid == null || resource.data.uid == request.auth.uid)
+                    && request.resource.data.uid == resource.data.uid
+                    && request.resource.data.get('leftAt',null) == resource.data.get('leftAt',null)
+                    // Contact sharing changes must be applied atomically by a trusted function.
+                    && ((resource.data.uid == null)
+                      || (request.resource.data.get('iban','') == resource.data.get('iban','')
+                          && request.resource.data.get('weroContact','') == resource.data.get('weroContact',''))
+                      || (request.resource.data.uid == null
+                          && request.resource.data.get('iban','') == ''
+                          && request.resource.data.get('weroContact','') == ''));
+      // Requires joinGroup(action=removeMember) which checks all expense history.
+      allow delete: if false;
+    }
+    function validMember(d) {
+      return d.keys().hasOnly(['name', 'color', 'uid', 'iban', 'weroContact', 'leftAt', 'createdAt', 'updatedAt'])
+        && okStr(d.name, 40)
+        && d.color is string && d.color.size() <= 9
+        && (d.uid == null || (d.uid is string && d.uid.size() >= 1 && d.uid.size() <= 128))
+        && d.get('iban', '') is string && d.get('iban', '').size() <= 40
+        && d.get('weroContact', '') is string && d.get('weroContact', '').size() <= 254
+        && (d.get('weroContact','') == '' || d.get('weroContact','').matches('([+][0-9]{7,15}|[0-9]{7,15}|[^ @]+@[^ @]+[.][^ @]+)'))
+        // Une fiche sans compte ne peut pas présenter un contact Wero comme officiel.
+        && (d.uid != null || d.get('weroContact', '') == '')
+        && (d.get('leftAt',null) == null || d.leftAt is timestamp);
+    }
+
+    // Dettes après départ : la comptabilité reste dans le groupe, le suivi est
+    // aussi répliqué en privé chez les deux participants concernés.
+    match /groups/{gid}/exitDebts/{debtId} {
+      allow read: if isMember(gid);
+      allow create, update, delete: if false;
+    }
+
+    // Reprise d'un participant sans compte : validation exclusive admin côté serveur.
+    match /groups/{gid}/memberClaims/{claimantUid} {
+      allow read: if groupAdmin(gid) || (signedIn() && request.auth.uid == claimantUid);
+      allow write: if false;
+    }
+
+    // Registre administratif des invitations ciblées. Le serveur est la seule
+    // autorité habilitée à inviter / accepter / refuser une appartenance.
+    match /groups/{gid}/groupInvites/{targetUid} {
+      allow read, write: if false;
+    }
+
+    // ---------- Prévisions (sans effet sur les soldes) ----------
+    // Chaque membre peut proposer un budget prévisionnel. L'auteur ou un
+    // administrateur peuvent le modifier / l'annuler / le supprimer.
+    match /groups/{gid}/plannedExpenses/{pid} {
+      allow read: if isMember(gid);
+      allow create: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && validPlannedExpense(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && (resource.data.createdBy == request.auth.uid || groupAdmin(gid))
+        && validPlannedExpense(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && (resource.data.createdBy == request.auth.uid || groupAdmin(gid));
+    }
+    function validPlannedExpense(d) {
+      return d.keys().hasOnly(['title','amountCents','category','date','note','status','createdBy','createdAt','updatedAt'])
+        && okStr(d.title,120)
+        && okCents(d.amountCents)
+        && d.category in ['courses','resto','loyer','transport','loisirs','factures','autre']
+        && d.date is string && (d.date == '' || d.date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}'))
+        && d.get('note','') is string && d.get('note','').size() <= 500
+        && d.status in ['planned','done','cancelled']
+        && d.createdBy is string && d.createdBy.size() <= 128
+        && d.createdAt is timestamp && d.updatedAt is timestamp;
+    }
+
+    // ---------- v28: sondages privés de groupe (aucun effet financier) ----------
+    // Un membre crée une question à 2–6 choix, les votes sont limités à sa
+    // propre clé UID par le diff de maps. Ni vote pour autrui ni altération
+    // des options/question après publication ne sont autorisés.
+    match /groups/{gid}/polls/{pollId} {
+      allow read: if isMember(gid);
+      allow create: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && validPoll(request.resource.data)
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.votes.size() == 0
+        && request.resource.data.status == 'open'
+        && request.resource.data.closesAt > request.time
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && validPoll(request.resource.data)
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.closesAt == resource.data.closesAt
+        && request.resource.data.question == resource.data.question
+        && request.resource.data.options == resource.data.options
+        && request.resource.data.updatedAt == request.time
+        && (
+          // Vote personnel, re-vote possible avant l'échéance.
+          (resource.data.status == 'open' && request.time < resource.data.closesAt
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes','updatedAt'])
+            && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
+            && request.resource.data.votes.keys().hasAll([request.auth.uid])
+            && request.resource.data.votes[request.auth.uid] is int
+            && request.resource.data.votes[request.auth.uid] >= 0
+            && request.resource.data.votes[request.auth.uid] < resource.data.options.size())
+          ||
+          // Clôture de sondage seulement par son auteur / un administrateur.
+          (resource.data.status == 'open' && request.resource.data.status == 'closed'
+            && (resource.data.createdBy == request.auth.uid || groupAdmin(gid))
+            && request.resource.data.votes == resource.data.votes
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']))
+        );
+      allow delete: if isMember(gid)
+        && get(groupPath(gid)).data.archived == false
+        && (resource.data.createdBy == request.auth.uid || groupAdmin(gid));
+    }
+    function validPoll(d) {
+      return d.keys().hasOnly(['question','options','votes','status','createdBy','closesAt','createdAt','updatedAt'])
+        && okStr(d.question,160) && d.question.size() >= 5
+        && d.options is list && d.options.size() >= 2 && d.options.size() <= 6
+        && d.options[0] is string && d.options[0].size() > 0 && d.options[0].size() <= 100
+        && d.options[1] is string && d.options[1].size() > 0 && d.options[1].size() <= 100
+        && (d.options.size() < 3 || (d.options[2] is string && d.options[2].size() > 0 && d.options[2].size() <= 100))
+        && (d.options.size() < 4 || (d.options[3] is string && d.options[3].size() > 0 && d.options[3].size() <= 100))
+        && (d.options.size() < 5 || (d.options[4] is string && d.options[4].size() > 0 && d.options[4].size() <= 100))
+        && (d.options.size() < 6 || (d.options[5] is string && d.options[5].size() > 0 && d.options[5].size() <= 100))
+        && d.votes is map && d.votes.size() <= 50
+        && d.votes.values().toSet().hasOnly([0,1,2,3,4,5])
+        && d.status in ['open','closed']
+        && d.createdBy is string && d.createdBy.size() > 0 && d.createdBy.size() <= 128
+        && d.closesAt is timestamp && d.createdAt is timestamp && d.updatedAt is timestamp;
+    }
+
+    // ---------- Dépenses (montants en centimes entiers) ----------
+    // Lecture : membres. Toutes les dépenses ordinaires sont enregistrées par
+    // approveGroupExpense après vérification serveur des montants et des parts.
+    // Chaque membre peut ajouter une dépense : elle compte immédiatement.
+    // Seuls les administrateurs peuvent CONFIRMER un remboursement de groupe.
+    // La création directe via client SDK est réservée au groupe de démonstration.
+    match /groups/{gid}/expenses/{eid} {
+      allow read: if isMember(gid);
+      // Toutes les vraies dépenses passent par approveGroupExpense (opération
+      // save / import / delete) : somme des parts vérifiée AVANT écriture.
+      // Exception legacy : création atomique du groupe de démonstration.
+      allow create: if isMemberAfter(gid) && validExpense(request.resource.data)
+        && receiptBelongs(gid,eid,request.resource.data)
+        && !exists(groupPath(gid))
+        && getAfter(groupPath(gid)).data.get('demo',false) == true
+        && getAfter(groupPath(gid)).data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.approvalStatus == 'approved';
+      allow update, delete: if false;
+    }
+    function receiptBelongs(gid, eid, d) {
+      return d.get('receiptPath', null) == null
+        || d.receiptPath == 'groups/' + gid + '/receipts/' + eid + '.jpg';
+    }
+    function validExpense(d) {
+      return d.keys().hasOnly(['title', 'amountCents', 'paidBy', 'payers', 'split', 'splitMode', 'splitInput', 'category', 'date', 'note',
+                               'recurring', 'recurringNext', 'recurringFrom', 'auto', 'receiptPath', 'createdAt', 'updatedAt', 'createdBy', 'createdByName', 'approvalStatus', 'approvedBy', 'approvedAt', 'rejectedBy', 'rejectedAt'])
+        && d.get('approvalStatus','approved') in ['pending','approved','rejected']
+        && okStr(d.title, 120)
+        && okCents(d.amountCents)
+        && d.payers is map && d.payers.size() > 0 && d.payers.size() <= 50
+        && d.get('paidBy', '') is string && d.get('paidBy', '').size() <= 128
+        && d.split is map && d.split.size() > 0 && d.split.size() <= 50
+        && d.splitMode in ['equal', 'shares', 'percent', 'exact']
+        && d.category is string && d.category.size() <= 20
+        && d.date is string && d.date.size() == 10
+        && d.get('note', '') is string && d.get('note', '').size() <= 500
+        && (d.get('receiptPath', null) == null || (d.receiptPath is string && d.receiptPath.size() <= 200))
+        && (d.get('recurring', null) == null || d.recurring is map)
+        && d.get('createdByName', '') is string && d.get('createdByName', '').size() <= 60
+        && (d.get('auto', false) is bool)
+        && (d.get('recurringNext', null) == null || (d.recurringNext is string && d.recurringNext.size() == 10));
+    }
+
+    // ---------- Remboursements enregistrés (créés ou supprimés, jamais modifiés) ----------
+    match /groups/{gid}/settlements/{sid} {
+      allow read: if isMember(gid);
+      allow create: if false; // only callable after admin confirmation
+      allow update: if false;
+      allow delete: if false; // only via an admin callable
+    }
+    function validSettlement(d) {
+      return d.keys().hasOnly(['fromId', 'toId', 'amountCents', 'date', 'createdBy', 'createdByName', 'createdAt'])
+        && okStr(d.fromId, 40) && okStr(d.toId, 40) && d.fromId != d.toId
+        && okCents(d.amountCents)
+        && d.date is string && d.date.size() == 10;
+    }
+
+    // ---------- Journal d'activité : écriture seule, aucune modification ----------
+    match /groups/{gid}/activity/{aid} {
+      allow read: if isMember(gid);
+      // Journal client non financier : les dépenses et règlements sont consignés
+      // exclusivement par les Cloud Functions après leurs contrôles métier.
+      allow create: if isMemberAfter(gid)
+                    && request.resource.data.keys().hasOnly(['type', 'text', 'meta', 'actorUid', 'actorName', 'createdAt'])
+                    && request.resource.data.type in ['group_create','group_edit','member_add','member_remove']
+                    && request.resource.data.actorUid == request.auth.uid
+                    && request.resource.data.actorName is string && request.resource.data.actorName.size() <= 60
+                    && request.resource.data.createdAt == request.time
+                    && request.resource.data.get('meta',{}) is map
+                    && request.resource.data.get('meta',{}).size() <= 5
+                    && okStr(request.resource.data.text, 300);
+      allow update, delete: if false;
+    }
+
+    // ---------- Social directory: public only to authenticated users; server writes ----------
+    match /socialProfiles/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+    match /handles/{handle} {
+      allow read, write: if false; // only server-side username resolution
+    }
+    match /friendRequests/{id} {
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid);
+      allow write: if false;
+    }
+    match /friendships/{id} {
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow write: if false;
+    }
+    match /blocks/{uid}/users/{other} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+    function directChatAllowed(cid) {
+      let path = /databases/$(database)/documents/directChats/$(cid);
+      let chat = get(path).data;
+      let other = chat.members.size() == 2 ? (chat.members[0] == request.auth.uid ? chat.members[1] : chat.members[0]) : request.auth.uid;
+      return signedIn() && request.auth.uid in chat.members
+        && (chat.members.size() == 1 || (chat.members.size() == 2
+          && !exists(/databases/$(database)/documents/blocks/$(request.auth.uid)/users/$(other))
+          && !exists(/databases/$(database)/documents/blocks/$(other)/users/$(request.auth.uid))));
+    }
+    match /directChats/{cid} {
+      // La liste des conversations reste lisible par les membres, pour éviter
+      // qu'une conversation bloquée fasse échouer toute la requête d'annuaire.
+      // En revanche, les messages et demandes sont fermés via directChatAllowed.
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow write: if false;
+      match /messages/{mid} {
+        allow read: if directChatAllowed(cid);
+        allow write: if false;
+      }
+      match /moneyRequests/{rid} {
+        allow read: if directChatAllowed(cid);
+        allow write: if false;
+      }
+      // v28.4: polls in private chats. No permission is extended to non-members.
+      // Blocked / archived DMs cannot publish, vote or close polls.
+      match /polls/{pollId} {
+        allow read: if directChatAllowed(cid);
+        allow create: if directChatAllowed(cid)
+          && get(/databases/$(database)/documents/directChats/$(cid)).data.members.size() == 2
+          && validPoll(request.resource.data)
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.votes.size() == 0
+          && request.resource.data.status == 'open'
+          && request.resource.data.closesAt > request.time
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time;
+        allow update: if directChatAllowed(cid)
+          && get(/databases/$(database)/documents/directChats/$(cid)).data.members.size() == 2
+          && validPoll(request.resource.data)
+          && request.resource.data.createdBy == resource.data.createdBy
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.closesAt == resource.data.closesAt
+          && request.resource.data.question == resource.data.question
+          && request.resource.data.options == resource.data.options
+          && request.resource.data.updatedAt == request.time
+          && (
+            (resource.data.status == 'open' && request.time < resource.data.closesAt
+              && request.resource.data.status == resource.data.status
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['votes','updatedAt'])
+              && request.resource.data.votes.diff(resource.data.votes).affectedKeys().hasOnly([request.auth.uid])
+              && request.resource.data.votes.keys().hasAll([request.auth.uid])
+              && request.resource.data.votes[request.auth.uid] is int
+              && request.resource.data.votes[request.auth.uid] >= 0
+              && request.resource.data.votes[request.auth.uid] < resource.data.options.size())
+            ||
+            (resource.data.status == 'open' && request.resource.data.status == 'closed'
+              && resource.data.createdBy == request.auth.uid
+              && request.resource.data.votes == resource.data.votes
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']))
+          );
+        allow delete: if false;
+      }
+    }
+    match /groups/{gid}/messages/{mid} {
+      allow read: if isMember(gid);
+      allow write: if false;
+    }
+    match /groups/{gid}/moneyRequests/{rid} {
+      allow read: if isMember(gid);
+      allow write: if false;
+    }
+    match /groups/{gid}/paymentRequests/{rid} {
+      allow read: if isMember(gid);
+      allow write: if false;
+    }
+    match /rateLimits/{id} { allow read, write: if false; }
+
+    // Tout le reste est interdit
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,10 @@
+#kortiz-consent{position:fixed;z-index:2200;bottom:max(14px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(650px,calc(100% - 24px));color:#fafcff;font-family:Inter,system-ui,sans-serif}
+#kortiz-consent .kc-card{padding:20px;border-radius:22px;background:#171923;border:1px solid #393e4b;box-shadow:0 15px 65px #000a}
+#kortiz-consent strong{font-size:18px}#kortiz-consent p{margin:10px 0 13px;color:#c9cdd7;line-height:1.55;font-size:14px}
+#kortiz-consent a{color:#b6e9df;font-size:13px;text-decoration:underline}#kortiz-consent .kc-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+#kortiz-consent button{cursor:pointer;flex:1;min-height:45px;border-radius:12px;background:#292b35;border:1px solid #4d5260;color:#fff;font:600 14px Inter,system-ui,sans-serif}
+#kortiz-consent button:first-child{background:#fff;color:#101015;border-color:#fff}
+#kortiz-consent .kc-pref{display:flex;align-items:center;gap:10px;line-height:1.45;font-size:14px;margin-top:16px}
+#kortiz-consent .kc-pref input{width:18px;height:18px;accent-color:#9bdec9}
+#kortiz-consent .kc-note{font-size:12px}
+@media(max-width:480px){#kortiz-consent .kc-card{padding:15px}#kortiz-consent .kc-actions{flex-direction:column}#kortiz-consent button{width:100%}}

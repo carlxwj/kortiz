@@ -1,0 +1,31 @@
+/* Kortiz v23 · Harmonisation légère de l’application avec la landing cinématique.
+   Ne modifie ni les contrôles financiers, ni les modales de confirmation. */
+:root{--r:20px;--r-lg:25px;--line:rgba(255,255,255,.11);--glass:rgba(14,14,18,.78);--surface:rgba(18,19,23,.94);--surface2:#1b1c20;--surface3:#282a2e;--font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif}
+body:not(.onboarding-active) #hero{background:#0c0c0e}
+body:not(.onboarding-active) #hero .fx{background:radial-gradient(42% 38% at 12% 9%,rgba(34,90,75,.51),transparent 70%),radial-gradient(46% 34% at 88% 2%,rgba(61,76,127,.42),transparent 70%),radial-gradient(45% 45% at 50% 90%,rgba(49,36,71,.30),transparent 74%)}
+body:not(.onboarding-active) #sidebar{background:rgba(12,13,16,.76);border:1px solid rgba(255,255,255,.105);backdrop-filter:blur(28px) saturate(135%);-webkit-backdrop-filter:blur(28px) saturate(135%);box-shadow:inset 0 1px 0 rgba(255,255,255,.045)}
+body:not(.onboarding-active) .sb-item{transition:background .2s,color .2s,transform .22s}
+body:not(.onboarding-active) .sb-item:hover{transform:translateX(2px)}
+body:not(.onboarding-active) .card,body:not(.onboarding-active) .kpi{background:rgba(13,14,18,.68);border:1px solid rgba(255,255,255,.105);box-shadow:inset 0 1px 0 rgba(255,255,255,.035);backdrop-filter:blur(18px) saturate(135%);-webkit-backdrop-filter:blur(18px) saturate(135%)}
+body:not(.onboarding-active) .hero:not(.mk-hero){background:linear-gradient(135deg,rgba(17,28,35,.84),rgba(14,16,31,.86));border:1px solid rgba(255,255,255,.12);box-shadow:inset 0 1px 0 rgba(255,255,255,.055)}
+body:not(.onboarding-active) .btn:not(.danger),body:not(.onboarding-active) .chip{transition:transform .24s cubic-bezier(.22,1,.36,1),background-color .24s,border-color .24s,opacity .24s}
+body:not(.onboarding-active) .btn:focus-visible,body:not(.onboarding-active) a:focus-visible{outline:2px solid #a4f4fd;outline-offset:3px}
+body:not(.onboarding-active) .sb-cta{border-radius:999px}
+body:not(.onboarding-active) .input{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.055)}
+body:not(.onboarding-active) .input:focus{border-color:rgba(164,244,253,.58);box-shadow:0 0 0 3px rgba(164,244,253,.085)}
+body:not(.onboarding-active) .sheet{background:#111216;border:1px solid rgba(255,255,255,.12)}
+body:not(.onboarding-active) .sheet .foot{background:#111216}
+body:not(.onboarding-active) .chat-bubble.mine{background:linear-gradient(140deg,rgba(28,56,58,.96),rgba(27,41,58,.96));border-color:rgba(164,244,253,.18)}
+body:not(.onboarding-active) .chat-composer{background:rgba(21,22,27,.86);border-color:rgba(255,255,255,.12)}
+@media(prefers-reduced-motion:reduce){body:not(.onboarding-active) .sb-item,body:not(.onboarding-active) .btn{transition:none}}
+/* La suite du parcours conserve ses étapes, mais retrouve la palette de la présentation. */
+body.onboarding-active .welcome-screen{background:radial-gradient(ellipse at 50% -15%,rgba(57,109,134,.24),transparent 52%),radial-gradient(ellipse at 95% 100%,rgba(54,75,73,.13),transparent 55%),#0c0c0e}
+body.onboarding-active .welcome-panel{background:linear-gradient(150deg,rgba(24,25,29,.88),rgba(9,10,13,.96));border:1px solid rgba(255,255,255,.13);box-shadow:inset 0 1px 0 rgba(255,255,255,.045),0 30px 75px rgba(0,0,0,.26)}
+body.onboarding-active .welcome-showcase{background:radial-gradient(circle at 70% 26%,rgba(75,119,138,.24),transparent 48%),linear-gradient(140deg,#0b1d21,#0c0c12 65%,#12101d);border-color:rgba(255,255,255,.13)}
+body.onboarding-active .welcome-showcase-eyebrow{color:#a4f4fd}
+body.onboarding-active .welcome-hero h1{font-weight:690;letter-spacing:-.055em}
+body.onboarding-active .welcome-progress span.done{background:rgba(164,244,253,.15);border-color:rgba(164,244,253,.3);color:#c8f9ff}
+body.onboarding-active .welcome-back{transition:transform .3s cubic-bezier(.22,1,.36,1),background .25s}
+body.onboarding-active .welcome-back:focus-visible{outline:2px solid #a4f4fd}
+body.onboarding-active .welcome-actions .btn,body.onboarding-active .welcome-auth .btn{border-radius:999px}
+body.onboarding-active .input:focus{box-shadow:0 0 0 3px rgba(164,244,253,.15);border-color:rgba(164,244,253,.45)}
