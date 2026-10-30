@@ -8,6 +8,12 @@ node --test tests/*.test.js
 
 **Résultat dans la copie nettoyée (30 octobre 2026) : 257 tests réussis / 257, 0 échec.** Le nombre de sous-tests peut évoluer avec le code.
 
+## Vérifications automatiques du backend
+
+Le workflow GitHub Actions lance aussi `npm ci --prefix functions` pour contrôler l'installation des dépendances déclarées et la cohérence du lockfile de Firebase Functions, puis `node --check functions/index.js` pour vérifier la syntaxe JavaScript du point d'entrée serveur. Ces contrôles ont été ajoutés après la publication initiale du projet.
+
+Ils **ne constituent pas** un test d'intégration des Cloud Functions ni une validation des autorisations Firebase en production : ces points exigent des émulateurs ou un environnement de test séparé.
+
 ## Couverture observable
 
 - Répartitions et soldes, remboursements déclaratifs et sortie d'un groupe.
