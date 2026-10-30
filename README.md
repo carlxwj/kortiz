@@ -24,6 +24,8 @@
 
 **Liens utiles :** [Site public Kortiz](https://kortiz-de19f.web.app/) · [Code et tests automatisés](https://github.com/carlxwj/kortiz/actions/workflows/checks.yml)
 
+**Dossier technique approfondi (33 pages) :** [Lire l'étude de cas complète — conception, problèmes résolus, architecture et tests (PDF)](docs/ETUDE_DE_CAS_TECHNIQUE_KORTIZ.pdf)
+
 > Le site public peut correspondre à une version différente du code de ce dépôt. Les parcours qui nécessitent Firebase doivent être validés dans l'environnement concerné.
 
 ## Présentation
